@@ -1,5 +1,6 @@
 #[macro_use]
 mod events;
+mod gfx;
 pub mod data;
 
 use sdl2::render::Renderer;
