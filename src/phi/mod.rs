@@ -3,7 +3,11 @@ mod events;
 pub mod gfx;
 pub mod data;
 
+use self::gfx::Sprite;
 use sdl2::render::Renderer;
+use sdl2::pixels::Color;
+use std::collections::HashMap;
+use std::path::Path;
 
 struct_events! {
     keyboard: {
@@ -25,19 +29,36 @@ struct_events! {
 pub struct Phi<'window> {
     pub events: Events,
     pub renderer: Renderer<'window>,
+    cached_fonts: HashMap<(&'static str, i32), ::sdl2_ttf::Font>,
+    ttf_context: ::sdl2_ttf::Sdl2TtfContext,
 }
 
 impl<'window> Phi<'window> {
-    fn new(events: Events, renderer: Renderer<'window>) -> Phi<'window> {
+    fn new(events: Events, renderer: Renderer<'window>, ttf_context: ::sdl2_ttf::Sdl2TtfContext) -> Phi<'window> {
         Phi {
             events: events,
             renderer: renderer,
+            cached_fonts: HashMap::new(),
+            ttf_context: ttf_context,
         }
     }
 
     pub fn output_size(&self) -> (f64, f64) {
         let (w, h) = self.renderer.output_size().unwrap();
         (w as f64, h as f64)
+    }
+
+    pub fn ttf_str_sprite(&mut self, text: &str, font_path: &'static str, size: i32, color: Color) -> Option<Sprite> {
+        if let Some(font) = self.cached_fonts.get(&(font_path, size)){
+            return font.render(text).blended(color).ok()
+            .and_then(|surface| self.renderer.create_texture_from_surface(&surface).ok())
+            .map(Sprite::new);
+        }
+        self.ttf_context.load_font(Path::new(&font_path), size as u16).ok()
+        .and_then(|font|{
+            self.cached_fonts.insert((font_path, size), font);
+            self.ttf_str_sprite(text, font_path, size, color)
+        })
     }
 }
 
@@ -67,6 +88,7 @@ pub fn spawn<F>(title: &str, init: F)
     let sdl_context = ::sdl2::init().unwrap();
     let video = sdl_context.video().unwrap();
     let mut timer = sdl_context.timer().unwrap();
+    let ttf_context = ::sdl2_ttf::init().unwrap();
 
     // Create the window
     let window = video.window(title, 800, 600)
@@ -79,6 +101,7 @@ pub fn spawn<F>(title: &str, init: F)
         window.renderer()
             .accelerated()
             .build().unwrap(),
+        ttf_context,
     );
 
     // Create the default view
