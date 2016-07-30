@@ -2,6 +2,7 @@ use phi::{Phi, View, ViewAction};
 use phi::gfx::{CopySprite, Sprite};
 use sdl2::pixels::Color;
 use phi::data::Rectangle;
+use views::shared::Background;
 
 
 const ACTION_FONT: &'static str = "assets/belligerent.ttf";
@@ -34,6 +35,9 @@ impl Action {
 pub struct MainMenuView {
     actions: Vec<Action>,
     selected: i8,
+    bg_back: Background,
+    bg_middle: Background,
+    bg_front: Background,
 }
 
 impl MainMenuView {
@@ -47,7 +51,22 @@ impl MainMenuView {
                     ViewAction::Quit
                 })),
             ],
-            selected: 0
+            selected: 0,
+            bg_back: Background {
+                pos: 0.0,
+                vel: 20.0,
+                sprite: Sprite::load(&mut phi.renderer, "assets/starBG.png").unwrap(),
+            },
+            bg_middle: Background {
+                pos: 0.0,
+                vel: 40.0,
+                sprite: Sprite::load(&mut phi.renderer, "assets/starMG.png").unwrap(),
+            },
+            bg_front: Background {
+                pos: 0.0,
+                vel: 80.0,
+                sprite: Sprite::load(&mut phi.renderer, "assets/starFG.png").unwrap(),
+            },
         }
     }
 }
@@ -93,27 +112,54 @@ impl View for MainMenuView {
         phi.renderer.set_draw_color(Color::RGB(0, 0, 0));
         phi.renderer.clear();
 
+        // Render the backgrounds
+        self.bg_back.render(&mut phi.renderer, elapsed);
+        self.bg_middle.render(&mut phi.renderer, elapsed);
+        self.bg_front.render(&mut phi.renderer, elapsed);
+
         // Render the labels in the menu
+        // Definitions for the menu's layout
         let (win_w, win_h) = phi.output_size();
+        let label_h = 50.0;//每行的高
+        let border_width = 3.0;//边框
+        let box_w = 360.0;//宽度
+        let box_h = self.actions.len() as f64 * label_h;//高度
+        let margin_h = 10.0;//上填充
+
+        // Render the border of the colored box which holds the labels
+        phi.renderer.set_draw_color(Color::RGB(70, 15, 70));
+        phi.renderer.fill_rect(Rectangle {
+            w: box_w + border_width * 2.0,
+            h: box_h + border_width * 2.0 + margin_h * 2.0,
+            x: (win_w - box_w) / 2.0 - border_width,
+            y: (win_h - box_h) / 2.0 - margin_h - border_width,
+        }.to_sdl().unwrap());
+
+        // Render the colored box which holds the labels
+        phi.renderer.set_draw_color(Color::RGB(140, 30, 140));
+        phi.renderer.fill_rect(Rectangle {
+            w: box_w,
+            h: box_h + margin_h * 2.0,
+            x: (win_w - box_w) / 2.0,
+            y: (win_h - box_h) / 2.0 - margin_h,
+        }.to_sdl().unwrap());
 
         for (i, action) in self.actions.iter().enumerate() {
             if self.selected as usize == i {
                 let (w, h) = action.hover_sprite.size();
                 phi.renderer.copy_sprite(&action.idle_sprite, Rectangle {
-                    //? I suggest trying to draw this on a sheet of paper.
-                    x: (win_w - w) / 2.0,
-                    //? We place every element under the previous one.
-                    y: 32.0 + 48.0 * i as f64,
                     w: w,
                     h: h,
+                    x: (win_w - w) / 2.0,
+                    y: (win_h - box_h + label_h - h) / 2.0 + label_h * i as f64,
                 });
             }else{
                 let (w, h) = action.idle_sprite.size();
                 phi.renderer.copy_sprite(&action.idle_sprite, Rectangle {
-                    x: (win_w - w) / 2.0,
-                    y: 32.0 + 48.0 * i as f64,
                     w: w,
                     h: h,
+                    x: (win_w - w) / 2.0,
+                    y: (win_h - box_h + label_h - h) / 2.0 + label_h * i as f64,
                 });
             }
 
