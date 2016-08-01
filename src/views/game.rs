@@ -6,13 +6,20 @@ use phi::gfx::{CopySprite, Sprite};
 use sdl2::render::{Texture, TextureQuery};
 use sdl2_image::LoadTexture;
 use sdl2::render::Renderer;
-use views::shared::Background;
+use views::shared::{Background, BgSet};
+use phi::gfx::AnimatedSprite;
 
 /// Pixels traveled by the player's ship every second, when it is moving.
 const PLAYER_SPEED: f64 = 180.0;
 
 const SHIP_W: f64 = 43.0;
 const SHIP_H: f64 = 39.0;
+
+const ASTEROID_PATH: &'static str = "assets/asteroid.png";
+const ASTEROIDS_WIDE: usize = 21;
+const ASTEROIDS_HIGH: usize = 7;
+const ASTEROIDS_TOTAL: usize = ASTEROIDS_WIDE * ASTEROIDS_HIGH - 4;
+const ASTEROID_SIDE: f64 = 96.0;
 
 /// The different states our ship might be in. In the image, they're ordered
 /// from left to right, then from top to bottom.
@@ -37,13 +44,16 @@ struct Ship {
 
 pub struct ShipView {
     player: Ship,
-    bg_back: Background,
-    bg_middle: Background,
-    bg_front: Background,
+    bg: BgSet,
 }
 
 impl ShipView {
-    pub fn new(phi: &mut Phi) -> ShipView {
+    pub fn new(phi: &mut Phi, bg: BgSet) -> ShipView {
+        let bg = BgSet::new(&mut phi.renderer);
+        ShipView::with_backgrounds(phi, bg)
+    }
+
+    pub fn with_backgrounds(phi: &mut Phi, bg: BgSet) -> ShipView {
         let spritesheet = Sprite::load(&mut phi.renderer, "assets/spaceship.png").unwrap();
         let mut sprites = Vec::with_capacity(9);
 
@@ -69,21 +79,7 @@ impl ShipView {
                 sprites: sprites,
                 current: ShipFrame::MidNorm
             },
-            bg_back: Background {
-                pos: 0.0,
-                vel: 20.0,
-                sprite: Sprite::load(&mut phi.renderer, "assets/starBG.png").unwrap(),
-            },
-            bg_middle: Background {
-                pos: 0.0,
-                vel: 40.0,
-                sprite: Sprite::load(&mut phi.renderer, "assets/starMG.png").unwrap(),
-            },
-            bg_front: Background {
-                pos: 0.0,
-                vel: 80.0,
-                sprite: Sprite::load(&mut phi.renderer, "assets/starFG.png").unwrap(),
-            },
+            bg: bg,
         }
     }
 }
@@ -159,8 +155,8 @@ impl View for ShipView {
         //phi.renderer.fill_rect(self.player.rect.to_sdl().unwrap());
 
         // Render the Backgrounds
-        self.bg_back.render(&mut phi.renderer, elapsed);
-        self.bg_middle.render(&mut phi.renderer, elapsed);
+        self.bg.back.render(&mut phi.renderer, elapsed);
+        self.bg.middle.render(&mut phi.renderer, elapsed);
 
         const DEBUG: bool = false;
 
@@ -177,8 +173,65 @@ impl View for ShipView {
         );
 
         // Render the foreground
-        self.bg_front.render(&mut phi.renderer, elapsed);
+        self.bg.front.render(&mut phi.renderer, elapsed);
 
         ViewAction::None
     }
 }
+
+//小行星
+struct Asteroid {
+    sprite: AnimatedSprite,
+    rect: Rectangle,
+    vel: f64,
+}
+
+impl Asteroid {
+    fn new(phi: &mut Phi) -> Asteroid {
+        Asteroid {
+            sprite: Asteroid::get_sprite(phi, 15.0),
+            rect: Rectangle {
+                w: ASTEROID_SIDE,
+                h: ASTEROID_SIDE,
+                x: 128.0,
+                y: 128.0,
+            },
+            vel: 0.0,
+        }
+    }
+
+    fn get_sprite(phi: &mut Phi, fps: f64) -> AnimatedSprite {
+        let asteroid_spritesheet = Sprite::load(&mut phi.renderer, ASTEROID_PATH).unwrap();
+        let mut asteroid_sprites = Vec::with_capacity(ASTEROIDS_TOTAL);
+
+        for yth in 0..ASTEROIDS_HIGH {
+            for xth in 0..ASTEROIDS_WIDE {
+                //? There are four asteroids missing at the end of the
+                //? spritesheet: we do not want to render those.
+                if ASTEROIDS_WIDE * yth + xth >= ASTEROIDS_TOTAL {
+                    break;
+                }
+
+                asteroid_sprites.push(
+                    asteroid_spritesheet.region(Rectangle {
+                        w: ASTEROID_SIDE,
+                        h: ASTEROID_SIDE,
+                        x: ASTEROID_SIDE * xth as f64,
+                        y: ASTEROID_SIDE * yth as f64,
+                    }).unwrap());
+            }
+        }
+
+        AnimatedSprite::with_fps(asteroid_sprites, fps)
+    }
+
+    fn update(&mut self, _: &mut Phi, dt: f64) {
+        self.sprite.add_time(dt);
+    }
+
+    fn render(&mut self, phi: &mut Phi) {
+        phi.renderer.copy_sprite(&self.sprite, self.rect);
+    }
+}
+
+

@@ -2,7 +2,7 @@ use phi::{Phi, View, ViewAction};
 use phi::gfx::{CopySprite, Sprite};
 use sdl2::pixels::Color;
 use phi::data::Rectangle;
-use views::shared::Background;
+use views::shared::{Background, BgSet};
 
 
 const ACTION_FONT: &'static str = "assets/belligerent.ttf";
@@ -11,7 +11,7 @@ struct Action {
     /// The function which should be executed if the action is chosen.
     //? We store it in a Box because, as we saw previously, `Fn` is a trait,
     //? and we may only interact with unsized data through a pointer.
-    func: Box<Fn(&mut Phi) -> ViewAction>,
+    func: Box<Fn(&mut Phi, BgSet) -> ViewAction>,
 
     /// The sprite which is rendered when the player does not focus on this
     /// action's label.
@@ -23,7 +23,7 @@ struct Action {
 }
 
 impl Action {
-    fn new(phi: &mut Phi, label: &'static str, func: Box<Fn(&mut Phi) -> ViewAction>) -> Action {
+    fn new(phi: &mut Phi, label: &'static str, func: Box<Fn(&mut Phi, BgSet) -> ViewAction>) -> Action {
         Action {
             func: func,
             idle_sprite: phi.ttf_str_sprite(label, ACTION_FONT, 32, Color::RGB(220, 220, 220)).unwrap(),
@@ -35,38 +35,27 @@ impl Action {
 pub struct MainMenuView {
     actions: Vec<Action>,
     selected: i8,
-    bg_back: Background,
-    bg_middle: Background,
-    bg_front: Background,
+    bg: BgSet,
 }
 
 impl MainMenuView {
     pub fn new(phi: &mut Phi) -> MainMenuView {
+        let bg = BgSet::new(&mut phi.renderer);
+        MainMenuView::with_backgrounds(phi, bg)
+    }
+
+    pub fn with_backgrounds(phi: &mut Phi, bg: BgSet) -> MainMenuView{
         MainMenuView{
             actions: vec![
-                Action::new(phi, "New Game", Box::new(|phi| {
-                    ViewAction::ChangeView(Box::new(::views::game::ShipView::new(phi)))
+                Action::new(phi, "New Game", Box::new(|phi, bg| {
+                    ViewAction::ChangeView(Box::new(::views::game::ShipView::new(phi, bg)))
                 })),
-                Action::new(phi, "Quit", Box::new(|_| {
+                Action::new(phi, "Quit", Box::new(|_, _| {
                     ViewAction::Quit
                 })),
             ],
             selected: 0,
-            bg_back: Background {
-                pos: 0.0,
-                vel: 20.0,
-                sprite: Sprite::load(&mut phi.renderer, "assets/starBG.png").unwrap(),
-            },
-            bg_middle: Background {
-                pos: 0.0,
-                vel: 40.0,
-                sprite: Sprite::load(&mut phi.renderer, "assets/starMG.png").unwrap(),
-            },
-            bg_front: Background {
-                pos: 0.0,
-                vel: 80.0,
-                sprite: Sprite::load(&mut phi.renderer, "assets/starFG.png").unwrap(),
-            },
+            bg: bg,
         }
     }
 }
@@ -86,7 +75,8 @@ impl View for MainMenuView {
             //? This is necessary because Rust allows a method to share the same
             //? name as an attribute -- a feature which is useful for defining
             //? accessors.
-            return (self.actions[self.selected as usize].func)(phi);
+            let bg = self.bg.clone();
+            return (self.actions[self.selected as usize].func)(phi, bg);
         }
 
         // Change the selected action using the keyboard.
@@ -113,9 +103,9 @@ impl View for MainMenuView {
         phi.renderer.clear();
 
         // Render the backgrounds
-        self.bg_back.render(&mut phi.renderer, elapsed);
-        self.bg_middle.render(&mut phi.renderer, elapsed);
-        self.bg_front.render(&mut phi.renderer, elapsed);
+        self.bg.back.render(&mut phi.renderer, elapsed);
+        self.bg.middle.render(&mut phi.renderer, elapsed);
+        self.bg.front.render(&mut phi.renderer, elapsed);
 
         // Render the labels in the menu
         // Definitions for the menu's layout
