@@ -33,6 +33,8 @@ const EXPLOSION_SIDE: f64 = 96.0;
 const EXPLOSION_FPS: f64 = 16.0;
 const EXPLOSION_DURATION: f64 = 1.0 / EXPLOSION_FPS * EXPLOSIONS_TOTAL as f64;
 
+const DEBUG: bool = false;
+
 /// The different states our ship might be in. In the image, they're ordered
 /// from left to right, then from top to bottom.
 #[derive(Clone, Copy)]
@@ -346,8 +348,6 @@ impl View for GameView {
         self.bg.back.render(&mut phi.renderer, elapsed);
         self.bg.middle.render(&mut phi.renderer, elapsed);
 
-        const DEBUG: bool = false;
-
         // Render the bounding box (for debugging purposes)
         if DEBUG {
             phi.renderer.set_draw_color(Color::RGB(200, 200, 50));
@@ -415,7 +415,6 @@ impl Asteroid {
     }
 
     fn render(&self, phi: &mut Phi) {
-        const DEBUG: bool = false;
         if DEBUG {
             // Render the bounding box
             phi.renderer.set_draw_color(Color::RGB(200, 200, 50));
