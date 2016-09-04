@@ -108,9 +108,9 @@ pub fn spawn<F>(title: &str, init: F)
     let mut current_view = init(&mut context);
 
 
-    // Frame timing
+    // Frame timing  使用的上一秒帧率
 
-    let interval = 1_000 / 60;
+    let interval = 1_000 / 60;//间隔 60帧，每帧多长时间？
     let mut before = timer.ticks();
     let mut last_second = timer.ticks();
     let mut fps = 0u16;
@@ -120,7 +120,7 @@ pub fn spawn<F>(title: &str, init: F)
 
         let now = timer.ticks();
         let dt = now - before;
-        let elapsed = dt as f64 / 1_000.0;
+        let elapsed = dt as f64 / 1_000.0;//过去的时间
 
         // If the time elapsed since the last frame is too small, wait out the
         // difference and try again.

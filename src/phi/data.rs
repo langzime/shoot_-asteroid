@@ -59,4 +59,53 @@ impl Rectangle {
             self.y < other.y + other.h &&
             self.y + self.h > other.y
     }
+
+    /// Generate a rectangle with the provided size, with its top-left corner
+    /// at (0, 0).
+    pub fn with_size(w: f64, h: f64) -> Rectangle {
+        Rectangle {
+            w: w,
+            h: h,
+            x: 0.0,
+            y: 0.0,
+        }
+    }
+
+
+    /// Centers
+    pub fn center_at(self, center: (f64, f64)) -> Rectangle {
+        Rectangle {
+            x: center.0 - self.w / 2.0,
+            y: center.1 - self.h / 2.0,
+            ..self
+        }
+    }
+
+    /// Return the center of the rectangle.
+    pub fn center(self) -> (f64, f64) {
+        let x = self.x + self.w / 2.0;
+        let y = self.y + self.h / 2.0;
+        (x, y)
+    }
+}
+
+/// Wraps some value and indicates whether it is still _alive_.
+/// This is useful, for example, when iterating over a bunch of objects and
+/// determining whether any one should be kept alive based on the other
+/// entities in the game.
+pub struct MaybeAlive<T> {
+    pub alive: bool,
+    pub value: T,
+}
+
+impl<T> MaybeAlive<T> {
+    /// Checks whether the value is still alive. If this is the case, then
+    /// return `Some(value)`; otherwise, return `None`.
+    pub fn as_option(self) -> Option<T> {
+        if self.alive {
+            Some(self.value)
+        } else {
+            None
+        }
+    }
 }

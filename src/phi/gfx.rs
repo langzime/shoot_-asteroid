@@ -1,3 +1,4 @@
+use phi::Phi;
 use phi::data::Rectangle;
 use std::cell::RefCell;
 use std::path::Path;
@@ -151,6 +152,32 @@ impl AnimatedSprite {
             self.current_time = (self.frames() - 1) as f64 * self.frame_delay;
         }
     }
+
+    pub fn load_frames(phi: &mut Phi, descr: AnimatedSpriteDescr) -> Vec<Sprite> {
+        // Read the asteroid's image from the filesystem and construct an
+        // animated sprite out of it.
+
+        let spritesheet = Sprite::load(&mut phi.renderer, descr.image_path).unwrap();
+        let mut frames = Vec::with_capacity(descr.total_frames);
+
+        for yth in 0..descr.frames_high {
+            for xth in 0..descr.frames_wide {
+                if descr.frames_wide * yth + xth >= descr.total_frames {
+                    break;
+                }
+
+                frames.push(
+                    spritesheet.region(Rectangle {
+                        w: descr.frame_w,
+                        h: descr.frame_h,
+                        x: descr.frame_w * xth as f64,
+                        y: descr.frame_h * yth as f64,
+                    }).unwrap());
+            }
+        }
+
+        frames
+    }
 }
 
 impl Renderable for AnimatedSprite {
@@ -178,5 +205,20 @@ impl<'window> CopySprite<AnimatedSprite> for Renderer<'window> {
     fn copy_sprite(&mut self, renderable: &AnimatedSprite, dest: Rectangle) {
         renderable.render(self, dest);
     }
+}
+
+/// A bunch of options for loading the frames of an animation from a spritesheet
+/// stored at `image_path`.
+//? You might notice the lifetime annotation. As always, this means: the file's
+//? path should stay alive longer than the configuration that references it.
+//? Because it will, more often than not, store a string allocated statically --
+//? as we'll be doing here -- ensuring this should be mostly trivial.
+pub struct AnimatedSpriteDescr<'a> {
+    pub image_path: &'a str,
+    pub total_frames: usize,
+    pub frames_high: usize,
+    pub frames_wide: usize,
+    pub frame_w: f64,
+    pub frame_h: f64,
 }
 

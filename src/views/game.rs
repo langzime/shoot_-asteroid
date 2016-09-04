@@ -1,13 +1,13 @@
 use phi::{Phi, View, ViewAction};
 use sdl2::pixels::Color;
-use phi::data::Rectangle;
+use phi::data::{Rectangle, MaybeAlive};
 use std::path::Path;
 use phi::gfx::{CopySprite, Sprite};
 use sdl2::render::{Texture, TextureQuery};
 use sdl2_image::LoadTexture;
 use sdl2::render::Renderer;
 use views::shared::{Background, BgSet};
-use phi::gfx::AnimatedSprite;
+use phi::gfx::{AnimatedSprite, AnimatedSpriteDescr};
 
 /// Pixels traveled by the player's ship every second, when it is moving.
 const PLAYER_SPEED: f64 = 180.0;
@@ -25,6 +25,14 @@ const ASTEROIDS_HIGH: usize = 7;
 const ASTEROIDS_TOTAL: usize = ASTEROIDS_WIDE * ASTEROIDS_HIGH - 4;
 const ASTEROID_SIDE: f64 = 96.0;
 
+const EXPLOSION_PATH: &'static str = "assets/explosion.png";
+const EXPLOSIONS_WIDE: usize = 5;
+const EXPLOSIONS_HIGH: usize = 4;
+const EXPLOSIONS_TOTAL: usize = 17;
+const EXPLOSION_SIDE: f64 = 96.0;
+const EXPLOSION_FPS: f64 = 16.0;
+const EXPLOSION_DURATION: f64 = 1.0 / EXPLOSION_FPS * EXPLOSIONS_TOTAL as f64;
+
 /// The different states our ship might be in. In the image, they're ordered
 /// from left to right, then from top to bottom.
 #[derive(Clone, Copy)]
@@ -40,18 +48,6 @@ enum ShipFrame {
     DownSlow = 8
 }
 
-struct Ship {
-    rect: Rectangle,
-    sprites: Vec<Sprite>,
-    current: ShipFrame,
-}
-
-pub struct ShipView {
-    player: Ship,
-    bullets: Vec<RectBullet>,
-    asteroid: Asteroid,
-    bg: BgSet,
-}
 
 #[derive(Clone, Copy)]
 struct RectBullet {
@@ -90,6 +86,12 @@ impl RectBullet {
     }
 }
 
+struct Ship {
+    rect: Rectangle,
+    sprites: Vec<Sprite>,
+    current: ShipFrame,
+}
+
 impl Ship {
     fn spawn_bullets(&self) -> Vec<RectBullet> {
         let cannons_x = self.rect.x + 30.0;
@@ -121,13 +123,23 @@ impl Ship {
     }
 }
 
-impl ShipView {
-    pub fn new(phi: &mut Phi, bg: BgSet) -> ShipView {
+pub struct GameView {
+    player: Ship,
+    bullets: Vec<RectBullet>,
+    asteroids: Vec<Asteroid>,
+    asteroid_factory: AsteroidFactory,
+    explosions: Vec<Explosion>,
+    explosion_factory: ExplosionFactory,
+    bg: BgSet,
+}
+
+impl GameView {
+    pub fn new(phi: &mut Phi, bg: BgSet) -> GameView {
         let bg = BgSet::new(&mut phi.renderer);
-        ShipView::with_backgrounds(phi, bg)
+        GameView::with_backgrounds(phi, bg)
     }
 
-    pub fn with_backgrounds(phi: &mut Phi, bg: BgSet) -> ShipView {
+    pub fn with_backgrounds(phi: &mut Phi, bg: BgSet) -> GameView {
         let spritesheet = Sprite::load(&mut phi.renderer, "assets/spaceship.png").unwrap();
         let mut sprites = Vec::with_capacity(9);
 
@@ -142,7 +154,7 @@ impl ShipView {
             }
         }
 
-        ShipView {
+        GameView {
             player: Ship {
                 rect: Rectangle {
                     x: 64.0,
@@ -157,14 +169,17 @@ impl ShipView {
             //? change drastically throughout the program, there is not much
             //? point in giving it a capacity.
             bullets: vec![],
-            asteroid: Asteroid::new(phi),
+            asteroids: vec![],
+            asteroid_factory: Asteroid::factory(phi),
+            explosions: vec![],
+            explosion_factory: Explosion::factory(phi),
             bg: bg,
         }
     }
 }
 
 
-impl View for ShipView {
+impl View for GameView {
     fn render(&mut self, phi: &mut Phi, elapsed: f64) -> ViewAction {
         if phi.events.now.quit || phi.events.now.key_escape == Some(true) {
             return ViewAction::Quit;
@@ -232,7 +247,72 @@ impl View for ShipView {
                 .collect();
 
         // Update the asteroid
-        self.asteroid.update(phi, elapsed);
+        self.asteroids =
+            ::std::mem::replace(&mut self.asteroids, vec![])
+                .into_iter()
+                .filter_map(|asteroid| asteroid.update(elapsed))
+                .collect();
+
+        // Update the explosions
+        self.explosions =
+            ::std::mem::replace(&mut self.explosions, vec![])
+                .into_iter()
+                .filter_map(|explosion| explosion.update(elapsed))
+                .collect();
+
+        // Collision detection 碰撞检测
+
+        let mut player_alive = true;
+
+        let mut transition_bullets: Vec<_> =
+        ::std::mem::replace(&mut self.bullets, vec![])
+            .into_iter()
+            .map(|bullet| MaybeAlive { alive: true, value: bullet })
+            .collect();
+
+        self.asteroids =
+            ::std::mem::replace(&mut self.asteroids, vec![])
+                .into_iter()
+                .filter_map(|asteroid| {
+                    // By default, the asteroid has not been in a collision.
+                    let mut asteroid_alive = true;
+
+                    for bullet in &mut transition_bullets {
+                        if asteroid.rect().overlaps(bullet.value.rect()) {
+                            asteroid_alive = false;
+                            bullet.alive = false;
+                        }
+                    }
+
+                    // The player's ship is destroyed if it is hit by an asteroid.
+                    // In which case, the asteroid is also destroyed.
+                    if asteroid.rect().overlaps(self.player.rect) {
+                        asteroid_alive = false;
+                        player_alive = false;
+                    }
+
+                    if asteroid_alive {
+                        Some(asteroid)
+                    } else {
+                        // Spawn an explosive wherever an asteroid was destroyed.
+                        self.explosions.push(
+                            self.explosion_factory.at_center(
+                                asteroid.rect().center()));
+                        None
+                    }
+                })
+                .collect();
+
+        self.bullets = transition_bullets.into_iter()
+            .filter_map(MaybeAlive::as_option)
+            .collect();
+
+        // TODO
+        // For the moment, we won't do anything about the player dying. This will be
+        // the subject of a future episode.
+        if !player_alive {
+            println!("The player's ship has been destroyed.");
+        }
 
         // Allow the player to shoot after the bullets are updated, so that,
         // when rendered for the first time, they are drawn wherever they
@@ -246,6 +326,12 @@ impl View for ShipView {
         //? by `spawn_bullets` will be empty.
         if phi.events.now.key_space == Some(true) {
             self.bullets.append(&mut self.player.spawn_bullets());
+        }
+
+        // Randomly create an asteroid about once every 100 frames, that is,
+        // a bit more often than once every two seconds.
+        if ::rand::random::<usize>() % 100 == 0 {
+            self.asteroids.push(self.asteroid_factory.random(phi));
         }
 
         // Clear the screen
@@ -280,7 +366,13 @@ impl View for ShipView {
         }
 
         // Render the asteroid
-        self.asteroid.render(phi);
+        for asteroid in &self.asteroids {
+            asteroid.render(phi);
+        }
+
+        for explosion in &self.explosions {
+            explosion.render(phi);
+        }
 
         // Render the foreground
         self.bg.front.render(&mut phi.renderer, elapsed);
@@ -293,79 +385,139 @@ impl View for ShipView {
 struct Asteroid {
     sprite: AnimatedSprite,
     rect: Rectangle,
-    vel: f64,
+    vel: f64,//速率
 }
 
 impl Asteroid {
-    fn new(phi: &mut Phi) -> Asteroid {
-        let mut asteroid = Asteroid {
-            sprite: Asteroid::get_sprite(phi, 1.0),
-            rect: Rectangle {
-                w: 0.0,
-                h: 0.0,
-                x: 0.0,
-                y: 0.0,
-            },
-            vel: 0.0,
-        };
-        asteroid.reset(phi);
-        asteroid
-    }
-
-    fn reset(&mut self, phi: &mut Phi) {
-        let (w, h) = phi.output_size();
-
-        // FPS in [10.0, 30.0)
-        self.sprite.set_fps(::rand::random::<f64>().abs() * 20.0 + 10.0);
-
-        // rect.y in the screen vertically
-        self.rect = Rectangle {
-            w: ASTEROID_SIDE,
-            h: ASTEROID_SIDE,
-            x: w,
-            y: ::rand::random::<f64>().abs() * (h - ASTEROID_SIDE),
-        };
-
-        // vel in [50.0, 150.0)
-        self.vel = ::rand::random::<f64>().abs() * 100.0 + 50.0;
-    }
-
-    fn get_sprite(phi: &mut Phi, fps: f64) -> AnimatedSprite {
-        let asteroid_spritesheet = Sprite::load(&mut phi.renderer, ASTEROID_PATH).unwrap();
-        let mut asteroid_sprites = Vec::with_capacity(ASTEROIDS_TOTAL);
-
-        for yth in 0..ASTEROIDS_HIGH {
-            for xth in 0..ASTEROIDS_WIDE {
-                //? There are four asteroids missing at the end of the
-                //? spritesheet: we do not want to render those.
-                if ASTEROIDS_WIDE * yth + xth >= ASTEROIDS_TOTAL {
-                    break;
-                }
-
-                asteroid_sprites.push(
-                    asteroid_spritesheet.region(Rectangle {
-                        w: ASTEROID_SIDE,
-                        h: ASTEROID_SIDE,
-                        x: ASTEROID_SIDE * xth as f64,
-                        y: ASTEROID_SIDE * yth as f64,
-                    }).unwrap());
-            }
+    fn factory(phi: &mut Phi) -> AsteroidFactory {
+        AsteroidFactory {
+            sprite: AnimatedSprite::with_fps(
+                AnimatedSprite::load_frames(phi, AnimatedSpriteDescr {
+                    image_path: ASTEROID_PATH,
+                    total_frames: ASTEROIDS_TOTAL,
+                    frames_high: ASTEROIDS_HIGH,
+                    frames_wide: ASTEROIDS_WIDE,
+                    frame_w: ASTEROID_SIDE,
+                    frame_h: ASTEROID_SIDE,
+                }), 1.0),
         }
-
-        AnimatedSprite::with_fps(asteroid_sprites, fps)
     }
 
-    fn update(&mut self, phi: &mut Phi, dt: f64) {
+    fn update(mut self, dt: f64) -> Option<Asteroid> {
         self.rect.x -= dt * self.vel;
         self.sprite.add_time(dt);
 
         if self.rect.x <= -ASTEROID_SIDE {
-            self.reset(phi);
+            None
+        } else {
+            Some(self)
         }
     }
 
-    fn render(&mut self, phi: &mut Phi) {
+    fn render(&self, phi: &mut Phi) {
+        const DEBUG: bool = false;
+        if DEBUG {
+            // Render the bounding box
+            phi.renderer.set_draw_color(Color::RGB(200, 200, 50));
+            phi.renderer.fill_rect(self.rect().to_sdl().unwrap());
+        }
         phi.renderer.copy_sprite(&self.sprite, self.rect);
+    }
+
+    fn rect(&self) -> Rectangle {
+        self.rect
+    }
+}
+
+struct AsteroidFactory {
+    sprite: AnimatedSprite,
+}
+
+impl AsteroidFactory {
+    fn random(&self, phi: &mut Phi) -> Asteroid {
+        let (w, h) = phi.output_size();
+
+        // FPS in [10.0, 30.0)
+        let mut sprite = self.sprite.clone();
+        sprite.set_fps(::rand::random::<f64>().abs() * 20.0 + 10.0);
+
+        Asteroid {
+            sprite: sprite,
+
+            // In the screen vertically, and over the right of the screen
+            // horizontally.
+            rect: Rectangle {
+                w: ASTEROID_SIDE,
+                h: ASTEROID_SIDE,
+                x: w,
+                y: ::rand::random::<f64>().abs() * (h - ASTEROID_SIDE),
+            },
+
+            // vel in [50.0, 150.0)
+            vel: ::rand::random::<f64>().abs() * 100.0 + 50.0,
+        }
+    }
+}
+
+struct Explosion {
+    sprite: AnimatedSprite,
+    rect: Rectangle,
+
+    //? Keep how long its been arrived, so that we destroy the explosion once
+    //? its animation is finished.
+    alive_since: f64,
+}
+
+impl Explosion {
+    fn factory(phi: &mut Phi) -> ExplosionFactory {
+        ExplosionFactory {
+            sprite: AnimatedSprite::with_fps(
+                AnimatedSprite::load_frames(phi, AnimatedSpriteDescr {
+                    image_path: EXPLOSION_PATH,
+                    total_frames: EXPLOSIONS_TOTAL,
+                    frames_high: EXPLOSIONS_HIGH,
+                    frames_wide: EXPLOSIONS_WIDE,
+                    frame_w: EXPLOSION_SIDE,
+                    frame_h: EXPLOSION_SIDE,
+                }), EXPLOSION_FPS),
+        }
+    }
+
+    fn update(mut self, dt: f64) -> Option<Explosion> {
+        self.alive_since += dt;
+        self.sprite.add_time(dt);
+
+        if self.alive_since >= EXPLOSION_DURATION {
+            None
+        } else {
+            Some(self)
+        }
+    }
+
+    fn render(&self, phi: &mut Phi) {
+        phi.renderer.copy_sprite(&self.sprite, self.rect);
+    }
+}
+
+struct ExplosionFactory {
+    sprite: AnimatedSprite,
+}
+
+impl ExplosionFactory {
+    fn at_center(&self, center: (f64, f64)) -> Explosion {
+        // FPS in [10.0, 30.0)
+        let mut sprite = self.sprite.clone();
+
+        Explosion {
+            sprite: sprite,
+
+            // In the screen vertically, and over the right of the screen
+            // horizontally.
+            rect: Rectangle::with_size(EXPLOSION_SIDE, EXPLOSION_SIDE)
+                .center_at(center),
+
+            alive_since: 0.0,
+        }
     }
 }
 
