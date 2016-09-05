@@ -12,9 +12,9 @@ use ::views::bullets::*;
 
 /// Pixels traveled by the player's ship every second, when it is moving.
 const PLAYER_SPEED: f64 = 180.0;
-
-const SHIP_W: f64 = 43.0;
-const SHIP_H: f64 = 39.0;
+const PLAYER_PATH: &'static str = "assets/spaceship.png";
+const PLAYER_W: f64 = 43.0;
+const PLAYER_H: f64 = 39.0;
 
 const ASTEROID_PATH: &'static str = "assets/asteroid.png";
 const ASTEROIDS_WIDE: usize = 21;
@@ -35,7 +35,7 @@ const DEBUG: bool = false;
 /// The different states our ship might be in. In the image, they're ordered
 /// from left to right, then from top to bottom.
 #[derive(Clone, Copy)]
-enum ShipFrame {
+enum PlayerFrame {
     UpNorm   = 0,
     UpFast   = 1,
     UpSlow   = 2,
@@ -47,84 +47,45 @@ enum ShipFrame {
     DownSlow = 8
 }
 
-struct Ship {
+struct Player {
     rect: Rectangle,
     sprites: Vec<Sprite>,
-    current: ShipFrame,
+    current: PlayerFrame,
 }
 
-impl Ship {
-    fn spawn_bullets(&self) -> Vec<Box<Bullet>> {
-        let cannons_x = self.rect.x + 30.0;
-        let cannon1_y = self.rect.y + 6.0;
-        let cannon2_y = self.rect.y + SHIP_H - 10.0;
-        spawn_bullets(cannons_x, cannon1_y, cannon2_y)
-    }
-}
-
-pub struct GameView {
-    player: Ship,
-    bullets: Vec<Box<Bullet>>,
-    asteroids: Vec<Asteroid>,
-    asteroid_factory: AsteroidFactory,
-    explosions: Vec<Explosion>,
-    explosion_factory: ExplosionFactory,
-    bg: BgSet,
-}
-
-impl GameView {
-    pub fn new(phi: &mut Phi, bg: BgSet) -> GameView {
-        let bg = BgSet::new(&mut phi.renderer);
-        GameView::with_backgrounds(phi, bg)
-    }
-
-    pub fn with_backgrounds(phi: &mut Phi, bg: BgSet) -> GameView {
-        let spritesheet = Sprite::load(&mut phi.renderer, "assets/spaceship.png").unwrap();
+impl Player {
+    pub fn new(phi: &mut Phi) -> Player {
+        // Get the spaceship's sprites
+        let spritesheet = Sprite::load(&mut phi.renderer, PLAYER_PATH).unwrap();
         let mut sprites = Vec::with_capacity(9);
 
         for y in 0..3 {
             for x in 0..3 {
                 sprites.push(spritesheet.region(Rectangle {
-                    w: SHIP_W,
-                    h: SHIP_H,
-                    x: SHIP_W * x as f64,
-                    y: SHIP_H * y as f64,
+                    w: PLAYER_W,
+                    h: PLAYER_H,
+                    x: PLAYER_W * x as f64,
+                    y: PLAYER_H * y as f64,
                 }).unwrap());
             }
         }
 
-        GameView {
-            player: Ship {
-                rect: Rectangle {
-                    x: 64.0,
-                    y: 64.0,
-                    w: SHIP_W,
-                    h: SHIP_H,
-                },
-                sprites: sprites,
-                current: ShipFrame::MidNorm
+        Player {
+            // Spawn the player at the center of the screen, vertically.
+            rect: Rectangle {
+                x: 64.0,
+                y: (phi.output_size().1 - PLAYER_H) / 2.0,
+                w: PLAYER_W,
+                h: PLAYER_H,
             },
-            //? We start with no bullets. Because the size of the vector will
-            //? change drastically throughout the program, there is not much
-            //? point in giving it a capacity.
-            bullets: vec![],
-            asteroids: vec![],
-            asteroid_factory: Asteroid::factory(phi),
-            explosions: vec![],
-            explosion_factory: Explosion::factory(phi),
-            bg: bg,
+            sprites: sprites,
+            current: PlayerFrame::MidNorm
         }
     }
-}
 
+    pub fn update(&mut self, phi: &mut Phi, elapsed: f64) {
+        // Change the player's cannons
 
-impl View for GameView {
-    fn render(&mut self, phi: &mut Phi, elapsed: f64) -> ViewAction {
-        if phi.events.now.quit || phi.events.now.key_escape == Some(true) {
-            return ViewAction::Quit;
-        }
-
-        // [TODO] Insert the moving logic here
         // Move the player's ship
 
         let diagonal =
@@ -147,9 +108,9 @@ impl View for GameView {
             (false, true) => moved,
         };
 
-        self.player.rect.x += dx;
-        self.player.rect.y += dy;
-        ///////////Insert the moving logic here
+        self.rect.x += dx;
+        self.rect.y += dy;
+
         // The movable region spans the entire height of the window and 70% of its
         // width. This way, the player cannot get to the far right of the screen, where
         // we will spawn the asteroids, and get immediately eliminated.
@@ -158,26 +119,113 @@ impl View for GameView {
         let movable_region = Rectangle {
             x: 0.0,
             y: 0.0,
-            w: phi.output_size().0 * 0.70,
-            h: phi.output_size().1,
+            w: phi.output_size().0 as f64 * 0.70,
+            h: phi.output_size().1 as f64,
         };
 
         // If the player cannot fit in the screen, then there is a problem and
         // the game should be promptly aborted.
-        self.player.rect = self.player.rect.move_inside(movable_region).unwrap();
+        self.rect = self.rect.move_inside(movable_region).unwrap();
 
         // Select the appropriate sprite of the ship to show.
-        self.player.current =
-            if dx == 0.0 && dy < 0.0       { ShipFrame::UpNorm }
-                else if dx > 0.0 && dy < 0.0   { ShipFrame::UpFast }
-                else if dx < 0.0 && dy < 0.0   { ShipFrame::UpSlow }
-                else if dx == 0.0 && dy == 0.0 { ShipFrame::MidNorm }
-                else if dx > 0.0 && dy == 0.0  { ShipFrame::MidFast }
-                else if dx < 0.0 && dy == 0.0  { ShipFrame::MidSlow }
-                else if dx == 0.0 && dy > 0.0  { ShipFrame::DownNorm }
-                else if dx > 0.0 && dy > 0.0   { ShipFrame::DownFast }
-                else if dx < 0.0 && dy > 0.0   { ShipFrame::DownSlow }
-                else { unreachable!() };
+        self.current =
+            if dx == 0.0 && dy < 0.0       { PlayerFrame::UpNorm }
+                else if dx > 0.0 && dy < 0.0   { PlayerFrame::UpFast }
+                    else if dx < 0.0 && dy < 0.0   { PlayerFrame::UpSlow }
+                        else if dx == 0.0 && dy == 0.0 { PlayerFrame::MidNorm }
+                            else if dx > 0.0 && dy == 0.0  { PlayerFrame::MidFast }
+                                else if dx < 0.0 && dy == 0.0  { PlayerFrame::MidSlow }
+                                    else if dx == 0.0 && dy > 0.0  { PlayerFrame::DownNorm }
+                                        else if dx > 0.0 && dy > 0.0   { PlayerFrame::DownFast }
+                                            else if dx < 0.0 && dy > 0.0   { PlayerFrame::DownSlow }
+                                                else { unreachable!() };
+    }
+
+    pub fn render(&self, phi: &mut Phi) {
+        // Render the bounding box (for debugging purposes)
+        if DEBUG {
+            phi.renderer.set_draw_color(Color::RGB(200, 200, 50));
+            phi.renderer.fill_rect(self.rect.to_sdl().unwrap());
+        }
+
+        // Render the ship's current sprite.
+        phi.renderer.copy_sprite(
+            &self.sprites[self.current as usize],
+            self.rect);
+    }
+
+    fn spawn_bullets(&self) -> Vec<Box<Bullet>> {
+        let cannons_x = self.rect.x + 30.0;
+        let cannon1_y = self.rect.y + 6.0;
+        let cannon2_y = self.rect.y + PLAYER_H - 10.0;
+        spawn_bullets(cannons_x, cannon1_y, cannon2_y)
+    }
+}
+
+pub struct GameView {
+    player: Player,
+    bullets: Vec<Box<Bullet>>,
+    asteroids: Vec<Asteroid>,
+    asteroid_factory: AsteroidFactory,
+    explosions: Vec<Explosion>,
+    explosion_factory: ExplosionFactory,
+    bg: BgSet,
+}
+
+impl GameView {
+    pub fn new(phi: &mut Phi, bg: BgSet) -> GameView {
+        let bg = BgSet::new(&mut phi.renderer);
+        GameView::with_backgrounds(phi, bg)
+    }
+
+    pub fn with_backgrounds(phi: &mut Phi, bg: BgSet) -> GameView {
+        let spritesheet = Sprite::load(&mut phi.renderer, "assets/spaceship.png").unwrap();
+        let mut sprites = Vec::with_capacity(9);
+
+        for y in 0..3 {
+            for x in 0..3 {
+                sprites.push(spritesheet.region(Rectangle {
+                    w: PLAYER_W,
+                    h: PLAYER_H,
+                    x: PLAYER_W * x as f64,
+                    y: PLAYER_H * y as f64,
+                }).unwrap());
+            }
+        }
+
+        GameView {
+            player: Player {
+                rect: Rectangle {
+                    x: 64.0,
+                    y: 64.0,
+                    w: PLAYER_W,
+                    h: PLAYER_H,
+                },
+                sprites: sprites,
+                current: PlayerFrame::MidNorm
+            },
+            //? We start with no bullets. Because the size of the vector will
+            //? change drastically throughout the program, there is not much
+            //? point in giving it a capacity.
+            bullets: vec![],
+            asteroids: vec![],
+            asteroid_factory: Asteroid::factory(phi),
+            explosions: vec![],
+            explosion_factory: Explosion::factory(phi),
+            bg: bg,
+        }
+    }
+}
+
+
+impl View for GameView {
+    fn render(&mut self, phi: &mut Phi, elapsed: f64) -> ViewAction {
+        if phi.events.now.quit || phi.events.now.key_escape == Some(true) {
+            return ViewAction::Quit;
+        }
+
+        // Update the player
+        self.player.update(phi, elapsed);
 
         // Update the bullets
         self.bullets =
