@@ -31,15 +31,20 @@ pub struct Phi<'window> {
     pub renderer: Renderer<'window>,
     cached_fonts: HashMap<(&'static str, i32), ::sdl2_ttf::Font>,
     ttf_context: ::sdl2_ttf::Sdl2TtfContext,
+    allocated_channels: isize,
 }
 
 impl<'window> Phi<'window> {
     fn new(events: Events, renderer: Renderer<'window>, ttf_context: ::sdl2_ttf::Sdl2TtfContext) -> Phi<'window> {
+        // We start with 32 mixer channels, which we may grow if necessary.
+        let allocated_channels = 32;
+        ::sdl2_mixer::allocate_channels(allocated_channels);
         Phi {
             events: events,
             renderer: renderer,
             cached_fonts: HashMap::new(),
             ttf_context: ttf_context,
+            allocated_channels: allocated_channels,
         }
     }
 
@@ -59,6 +64,22 @@ impl<'window> Phi<'window> {
             self.cached_fonts.insert((font_path, size), font);
             self.ttf_str_sprite(text, font_path, size, color)
         })
+    }
+
+    /// Play a sound once, and allocate new channels if this is necessary.
+    pub fn play_sound(&mut self, sound: &::sdl2_mixer::Chunk) {
+        // Attempt to play the sound once.
+        match ::sdl2_mixer::Channel::all().play(sound, 0) {
+            Err(_) => {
+                // If there weren't enough channels allocated, then we double
+                // that number and try again.
+                self.allocated_channels *= 2;
+                ::sdl2_mixer::allocate_channels(self.allocated_channels);
+                self.play_sound(sound);
+            },
+
+            _ => { /* Everything's Alright! */ }
+        }
     }
 }
 
@@ -89,6 +110,10 @@ pub fn spawn<F>(title: &str, init: F)
     let video = sdl_context.video().unwrap();
     let mut timer = sdl_context.timer().unwrap();
     let ttf_context = ::sdl2_ttf::init().unwrap();
+    //pay music
+    let mixer_context = ::sdl2_mixer::init(::sdl2_mixer::INIT_OGG).unwrap();
+    ::sdl2_mixer::open_audio(44100, ::sdl2_mixer::AUDIO_S16LSB, 2, 1024).unwrap();
+    ::sdl2_mixer::allocate_channels(32);
 
     // Create the window
     let window = video.window(title, 800, 600)

@@ -2,6 +2,7 @@ extern crate rand;
 extern crate sdl2;
 extern crate sdl2_image;
 extern crate sdl2_ttf;
+extern crate sdl2_mixer;
 
 mod phi;
 mod views;

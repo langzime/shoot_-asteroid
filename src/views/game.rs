@@ -1,5 +1,6 @@
 use phi::{Phi, View, ViewAction};
 use sdl2::pixels::Color;
+use ::sdl2_mixer::{Chunk, Music};
 use phi::data::{Rectangle, MaybeAlive};
 use std::path::Path;
 use phi::gfx::{CopySprite, Sprite};
@@ -170,6 +171,9 @@ pub struct GameView {
     explosions: Vec<Explosion>,
     explosion_factory: ExplosionFactory,
     bg: BgSet,
+    music: Music,
+    bullet_sound: Chunk,
+    explosion_sound: Chunk,
 }
 
 impl GameView {
@@ -179,6 +183,19 @@ impl GameView {
     }
 
     pub fn with_backgrounds(phi: &mut Phi, bg: BgSet) -> GameView {
+        let music = Music::from_file(Path::new("assets/mdk_phoenix_orchestral.ogg"))
+            .unwrap();
+
+        music.play(-1).unwrap();
+
+        let bullet_sound =
+        Chunk::from_file(Path::new("assets/bullet.ogg"))
+            .unwrap();
+
+        let explosion_sound =
+        Chunk::from_file(Path::new("assets/explosion.ogg"))
+            .unwrap();
+
         let spritesheet = Sprite::load(&mut phi.renderer, "assets/spaceship.png").unwrap();
         let mut sprites = Vec::with_capacity(9);
 
@@ -213,6 +230,9 @@ impl GameView {
             explosions: vec![],
             explosion_factory: Explosion::factory(phi),
             bg: bg,
+            music: music,
+            bullet_sound: bullet_sound,
+            explosion_sound: explosion_sound,
         }
     }
 }
@@ -285,6 +305,9 @@ impl View for GameView {
                         self.explosions.push(
                             self.explosion_factory.at_center(
                                 asteroid.rect().center()));
+
+                        phi.play_sound(&self.explosion_sound);
+
                         None
                     }
                 })
@@ -313,6 +336,7 @@ impl View for GameView {
         //? by `spawn_bullets` will be empty.
         if phi.events.now.key_space == Some(true) {
             self.bullets.append(&mut self.player.spawn_bullets());
+            phi.play_sound(&self.bullet_sound);
         }
 
         // Randomly create an asteroid about once every 100 frames, that is,

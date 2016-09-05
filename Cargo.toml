@@ -8,4 +8,4 @@ rand = "0.3"
 sdl2 = "0.21.0"
 sdl2_image = "0.21.0"
 sdl2_ttf = "0.21.0"
-
+sdl2_mixer = "0.21.0"
