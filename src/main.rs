@@ -9,7 +9,7 @@ mod views;
 
 
 fn main() {
-    ::phi::spawn("learn rust", |phi| {
+    ::phi::spawn("射击游戏", |phi| {
         Box::new(::views::main_menu::MainMenuView::new(phi))
     });
 }

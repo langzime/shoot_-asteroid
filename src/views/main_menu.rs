@@ -5,7 +5,7 @@ use phi::data::Rectangle;
 use views::shared::{Background, BgSet};
 
 
-const ACTION_FONT: &'static str = "assets/belligerent.ttf";
+const ACTION_FONT: &'static str = "assets/3dm.ttf";
 
 struct Action {
     /// The function which should be executed if the action is chosen.
@@ -47,10 +47,10 @@ impl MainMenuView {
     pub fn with_backgrounds(phi: &mut Phi, bg: BgSet) -> MainMenuView{
         MainMenuView{
             actions: vec![
-                Action::new(phi, "New Game", Box::new(|phi, bg| {
+                Action::new(phi, "新游戏", Box::new(|phi, bg| {
                     ViewAction::ChangeView(Box::new(::views::game::GameView::new(phi, bg)))
                 })),
-                Action::new(phi, "Quit", Box::new(|_, _| {
+                Action::new(phi, "退出", Box::new(|_, _| {
                     ViewAction::Quit
                 })),
             ],
