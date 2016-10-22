@@ -4,8 +4,9 @@ version = "0.1.0"
 authors = ["dujiajiyi"]
 
 [dependencies]
-rand = "0.3"
-sdl2 = "0.21.0"
-sdl2_image = "0.21.0"
-sdl2_ttf = "0.21.0"
-sdl2_mixer = "0.21.0"
+rand = "0.3.14"
+sdl2 = "0.24.0"
+sdl2_image = "0.24.0"
+sdl2_ttf = "0.24.0"
+sdl2_mixer = "0.24.0"
+find_folder = "0.3.0"

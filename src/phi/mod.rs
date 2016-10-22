@@ -123,9 +123,7 @@ pub fn spawn<F>(title: &str, init: F)
     // Create the context
     let mut context = Phi::new (
         Events::new(sdl_context.event_pump().unwrap()),
-        window.renderer()
-            .accelerated()
-            .build().unwrap(),
+        window.renderer().accelerated().build().unwrap(),
         ttf_context,
     );
 
@@ -162,6 +160,7 @@ pub fn spawn<F>(title: &str, init: F)
             last_second = now;
             fps = 0;
         }
+        println!("{}", elapsed);
 
 
         // Logic & rendering
